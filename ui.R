@@ -8,12 +8,13 @@ shinyUI(fluidPage(
         # Sidebar with a slider input for number of bins
         sidebarLayout(
                 sidebarPanel(
-                        #  textOutput("unreadtext")
+                        textOutput("unreadtext")
                 ),
                 
                 # Show a plot of the generated distribution
                 mainPanel(
-                        plotOutput("weightPlot")
+                        plotOutput("weightPlot"), 
+                        plotOutput("fatPlot")
                 )
         )
 ))

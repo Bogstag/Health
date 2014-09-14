@@ -1,6 +1,8 @@
 library(shiny)
 library(rjson)
 library(httr)
+library(ggplot2)
+library(reshape2)
 
 if (!file.exists("data")) { dir.create("data") }
 
@@ -89,43 +91,74 @@ CreateBodyMeasuresdf <- function(data) {
         masterdf
 }
 
-create_weight_df <- function(masterdf) {
-        masterdf <- masterdf[order(masterdf[, "grpid"]),]
-        groupids <- unique(masterdf$grpid)
-        #        weightdf <- data.frame(fulldate = character(0), ymd = character(0), grpid = numeric(0), attrib = character(0), category = character(0), "Weight (kg)" = numeric(0), "Fat Free Mass (kg)" = numeric(0), "Fat Ratio (%)" = numeric(0), "Fat Mass Weight (kg)" = numeric(0),  stringsAsFactors = FALSE)
-        weightdf <- data.frame(fulldate = character(0), wkg = numeric(0), ffm = numeric(0), fr = numeric(0), fmw = numeric(0),  stringsAsFactors = FALSE)
-        for (i in 1:length(groupids)) {
-                tmp <- subset(masterdf, masterdf$grpid == groupids[i] & type %in% c("Weight (kg)", "Fat Free Mass (kg)", "Fat Ratio (%)", "Fat Mass Weight (kg)"))
-                if (nrow(tmp) == 4) {
-                        wkg <- tmp[tmp$type == "Weight (kg)",]$value
-                        ffm <- tmp[tmp$type == "Fat Free Mass (kg)",]$value
-                        fr <- tmp[tmp$type == "Fat Ratio (%)",]$value
-                        fmw <- tmp[tmp$type == "Fat Mass Weight (kg)",]$value
-                        fulldate <- tmp$dfull[1]
-                        newrow <- data.frame(fulldate, wkg, ffm, fr, fmw)
-                        weightdf <- rbind(weightdf, newrow)
-                }
-                #                newrow <- data.frame(tmp$dfull[1], tmp$dymd[1], tmp$grpid[1], tmp$attrib[1], tmp$category[1], wkg, ffm, fr, fmw)
-        }
-        names(weightdf) <- c("fulldate", "Weight", "Fat Free Mass", "Fat Ratio", "Fat Mass Weight")
-        weightdf
+# create_weight_df <- function(masterdf) {
+#         masterdf <- masterdf[order(masterdf[, "grpid"]),]
+#         groupids <- unique(masterdf$grpid)
+#         #        weightdf <- data.frame(fulldate = character(0), ymd = character(0), grpid = numeric(0), attrib = character(0), category = character(0), "Weight (kg)" = numeric(0), "Fat Free Mass (kg)" = numeric(0), "Fat Ratio (%)" = numeric(0), "Fat Mass Weight (kg)" = numeric(0),  stringsAsFactors = FALSE)
+#         weightdf <- data.frame(fulldate = character(0), wkg = numeric(0), ffm = numeric(0), fr = numeric(0), fmw = numeric(0),  stringsAsFactors = FALSE)
+#         for (i in 1:length(groupids)) {
+#                 tmp <- subset(masterdf, masterdf$grpid == groupids[i] & type %in% c("Weight (kg)", "Fat Free Mass (kg)", "Fat Ratio (%)", "Fat Mass Weight (kg)"))
+#                 if (nrow(tmp) == 4) {
+#                         wkg <- tmp[tmp$type == "Weight (kg)",]$value
+#                         ffm <- tmp[tmp$type == "Fat Free Mass (kg)",]$value
+#                         fr <- tmp[tmp$type == "Fat Ratio (%)",]$value
+#                         fmw <- tmp[tmp$type == "Fat Mass Weight (kg)",]$value
+#                         fulldate <- tmp$dfull[1]
+#                         newrow <- data.frame(fulldate, wkg, ffm, fr, fmw)
+#                         weightdf <- rbind(weightdf, newrow)
+#                 }
+#                 #                newrow <- data.frame(tmp$dfull[1], tmp$dymd[1], tmp$grpid[1], tmp$attrib[1], tmp$category[1], wkg, ffm, fr, fmw)
+#         }
+#         names(weightdf) <- c("fulldate", "Weight", "Fat Free Mass", "Fat Ratio", "Fat Mass Weight")
+#         weightdf
+# }
+
+getheightcm <- function () {
+        height <- subset(masterdf, masterdf$type == "Height (m)")
+        height <- height[order(height[, "dfull"], decreasing = TRUE),]
+        height <- height[1,]$value * 100
+        height
+}
+
+get_ideal_weight <- function(height) {
+        idealweight <- 100
+        # Ideal body weight by the Hamwi method (men)
+        # Allow 48 kg, Add 2.7 kg for every 2.54 cm over 150 cm
+        idealweight$hamwi <- (((height - 152.4)/2.54)*2.7) + 48
+        
+        # Ideal body weight by the Devine formula (men)
+        # Allow 50 kg, Add 2.3 kg for every 2.54 cm over 150 cm
+        idealweight$devine <- (((height - 152.4)/2.54)*2.3) + 50
+        idealweight
 }
 
 masterdf <- GetBodyMeasures()
-weightdf <- create_weight_df(masterdf)
-# masterdf <- masterdf[order(masterdf[, "type"], masterdf[, "dfull"]),]
+masterdf <- masterdf[order(masterdf[, "type"], masterdf[, "dfull"]),]
+height <- getheightcm()
+idealweight <- get_ideal_weight(height)
+#weightdf <- create_weight_df(masterdf)
 # subsetvalue <- sort(unique(masterdf$type))
 # subsetname <- subset(masterdf, masterdf$type == subsetvalue[i])
-# weight <- subset(masterdf, masterdf$type == "Weight (kg)")
+fattype <- c("Fat Free Mass (kg)", "Fat Mass Weight (kg)", "Fat Ratio (%)")
+
 
 shinyServer(function(input, output) {
         
         output$unreadtext <- renderText({
-                paste("I have about "
-                      , "unread mail in my inbox, not including spam and trash.")
+                paste0("My ideal weight with Hamwi method is ", round(idealweight$hamwi, 1)
+                      , "kg and with Devine formula it is ", round(idealweight$devine, 1), "kg.")
         })
         output$weightPlot <- renderPlot({
-                plot(weightdf$fulldate, weightdf$Weight, type = "l", ylab="kg", xlab="Date", main = "Weight")
+                ggplot(subset(masterdf, masterdf$type == "Weight (kg)"), aes(x=dfull, y=value)) + 
+                labs(list(x = "Date", y = "kg")) + 
+                geom_line()
+                
+        })
+        output$fatPlot <- renderPlot({
+                ggplot(subset(masterdf, masterdf$type == fattype) , aes(x=dfull, y=value, color=type)) + 
+                        labs(list(x = "Date", y = "")) + 
+                        geom_line()
+                
         })
         
 })
